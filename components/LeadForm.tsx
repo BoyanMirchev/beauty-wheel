@@ -2,13 +2,14 @@
 
 import { type FormEvent, useId, useState } from 'react'
 import { normalizeBulgarianPhone, validateName, validatePhone } from '@/lib/validation'
-import { type Lead, submitLead } from '@/lib/wheel-storage'
+import type { PublicEntry } from '@/lib/types'
+import { type Lead, registerLead } from '@/lib/wheel-storage'
 import { cn } from '@/lib/utils'
 
 type FieldName = 'firstName' | 'lastName' | 'phone'
 
 type LeadFormProps = {
-  onSuccess: (lead: Lead) => void
+  onSuccess: (entry: PublicEntry) => void
 }
 
 export function LeadForm({ onSuccess }: LeadFormProps) {
@@ -41,10 +42,9 @@ export function LeadForm({ onSuccess }: LeadFormProps) {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      await submitLead(lead)
-      onSuccess(lead)
-    } catch {
-      setSubmitError('Нещо се обърка. Моля, опитай отново.')
+      onSuccess(await registerLead(lead))
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Нещо се обърка. Моля, опитай отново.')
       setSubmitting(false)
     }
   }

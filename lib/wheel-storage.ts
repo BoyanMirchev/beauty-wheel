@@ -1,5 +1,4 @@
-import type { Discount } from './wheel-config'
-import { segments } from './wheel-config'
+import type { PublicEntry } from './types'
 
 export type Lead = {
   firstName: string
@@ -7,56 +6,58 @@ export type Lead = {
   phone: string
 }
 
-const KEYS = {
-  registered: 'beautyWheelRegistered',
-  user: 'beautyWheelUser',
-  played: 'beautyWheelPlayed',
-  discount: 'beautyWheelDiscount',
-} as const
+// Convenience only: remembers which entry this browser registered. The server
+// is always asked for the real status, so clearing this never grants a new spin.
+const ENTRY_KEY = 'beautyWheelEntryId'
 
-export type WheelProgress =
-  | { stage: 'form' }
-  | { stage: 'wheel'; lead: Lead }
-  | { stage: 'played'; lead: Lead | null; discount: Discount }
-
-function readLead(): Lead | null {
+export function readStoredEntryId() {
   try {
-    const raw = localStorage.getItem(KEYS.user)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<Lead>
-    if (parsed.firstName && parsed.lastName && parsed.phone) return parsed as Lead
+    return localStorage.getItem(ENTRY_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function storeEntryId(id: string) {
+  try {
+    localStorage.setItem(ENTRY_KEY, id)
   } catch {}
-  return null
 }
 
-export function readProgress(): WheelProgress {
-  const discount = Number(localStorage.getItem(KEYS.discount)) as Discount
-  const lead = readLead()
-
-  if (localStorage.getItem(KEYS.played) === 'true' && segments.includes(discount)) {
-    return { stage: 'played', lead, discount }
-  }
-  if (localStorage.getItem(KEYS.registered) === 'true' && lead) {
-    return { stage: 'wheel', lead }
-  }
-  return { stage: 'form' }
+export function clearStoredEntryId() {
+  try {
+    localStorage.removeItem(ENTRY_KEY)
+  } catch {}
 }
 
-/**
- * Single entry point for persisting a lead. Swap the body for a
- * `fetch('/api/leads', { method: 'POST', body: JSON.stringify(lead) })`
- * (Neon / Supabase / Route Handler) without touching the UI.
- */
-export async function submitLead(lead: Lead): Promise<void> {
-  localStorage.setItem(KEYS.user, JSON.stringify(lead))
-  localStorage.setItem(KEYS.registered, 'true')
+async function readJson<T>(response: Response): Promise<T> {
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.error ?? 'Нещо се обърка. Моля, опитай отново.')
+  return data as T
 }
 
-export function saveSpinResult(discount: Discount) {
-  localStorage.setItem(KEYS.played, 'true')
-  localStorage.setItem(KEYS.discount, String(discount))
+export async function fetchEntry(id: string): Promise<PublicEntry | null> {
+  const response = await fetch(`/api/wheel/entry/${encodeURIComponent(id)}`, { cache: 'no-store' })
+  if (response.status === 404) return null
+  const { entry } = await readJson<{ entry: PublicEntry }>(response)
+  return entry
 }
 
-export function resetWheelProgress() {
-  Object.values(KEYS).forEach((key) => localStorage.removeItem(key))
+export async function registerLead(lead: Lead): Promise<PublicEntry> {
+  const response = await fetch('/api/wheel/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(lead),
+  })
+  const { entry } = await readJson<{ entry: PublicEntry }>(response)
+  return entry
+}
+
+export async function requestSpin(entryId: string) {
+  const response = await fetch('/api/wheel/spin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entryId }),
+  })
+  return readJson<{ status: 'won' | 'already_spun'; entry: PublicEntry }>(response)
 }

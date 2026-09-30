@@ -7,7 +7,6 @@ import {
   SEGMENT_ANGLE,
   SPIN_DURATION_MS,
   computeTargetRotation,
-  pickPrize,
   pickSegmentIndex,
   segmentIndexAtPointer,
   segments,
@@ -32,13 +31,17 @@ function segmentPath(index: number) {
 }
 
 type FortuneWheelProps = {
+  /** Asks the server for the prize; the wheel only animates toward it. */
+  requestPrize: () => Promise<Discount>
   onResult: (discount: Discount) => void
+  onError: (message: string) => void
   locked?: boolean
 }
 
-export function FortuneWheel({ onResult, locked = false }: FortuneWheelProps) {
+export function FortuneWheel({ requestPrize, onResult, onError, locked = false }: FortuneWheelProps) {
   const [rotation, setRotation] = useState(0)
   const [spinning, setSpinning] = useState(false)
+  const [requesting, setRequesting] = useState(false)
   const [duration, setDuration] = useState(SPIN_DURATION_MS)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -46,14 +49,24 @@ export function FortuneWheel({ onResult, locked = false }: FortuneWheelProps) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
   }, [])
 
-  const disabled = locked || spinning
+  const disabled = locked || spinning || requesting
 
-  function spin() {
+  async function spin() {
     if (disabled) return
+
+    setRequesting(true)
+    let prize: Discount
+    try {
+      prize = await requestPrize()
+    } catch (error) {
+      setRequesting(false)
+      onError(error instanceof Error ? error.message : 'Нещо се обърка. Моля, опитай отново.')
+      return
+    }
+    setRequesting(false)
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const spinDuration = reducedMotion ? REDUCED_MOTION_SPIN_DURATION_MS : SPIN_DURATION_MS
-    const prize = pickPrize()
     const target = computeTargetRotation(rotation, pickSegmentIndex(prize), Math.random, reducedMotion ? 1 : undefined)
 
     setDuration(spinDuration)
@@ -82,7 +95,7 @@ export function FortuneWheel({ onResult, locked = false }: FortuneWheelProps) {
         onClick={spin}
         disabled={disabled}
         aria-label={spinning ? 'Колелото се върти' : 'Завърти колелото'}
-        aria-busy={spinning}
+        aria-busy={spinning || requesting}
         className={cn(
           'group relative block aspect-square w-full rounded-full outline-none',
           'transition-transform duration-200 ease-out',
