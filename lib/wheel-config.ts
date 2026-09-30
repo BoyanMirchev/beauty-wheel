@@ -13,7 +13,7 @@ export const SPIN_DURATION_MS = 4200
 export const REDUCED_MOTION_SPIN_DURATION_MS = 900
 export const EXTRA_FULL_SPINS = 6
 
-export const BOOKING_URL = 'https://www.instagram.com/'
+export const BOOKING_URL = 'https://studio24.bg/m/p17478'
 
 const mod = (value: number, n: number) => ((value % n) + n) % n
 
